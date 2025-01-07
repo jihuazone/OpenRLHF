@@ -10,6 +10,7 @@ from transformers import AutoConfig, AutoModel, BitsAndBytesConfig
 from transformers.integrations.deepspeed import HfDeepSpeedConfig
 
 from openrlhf.utils.logging_utils import init_logger
+from openrlhf.utils.distributed_util import all_gather
 
 from .ring_attn_utils import convert_ring_attn_params
 from .utils import reset_position_ids
