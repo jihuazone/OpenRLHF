@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from openrlhf.models import GPTLMLoss, KDLoss
 from openrlhf.utils.distributed_sampler import DistributedSampler
+from openrlhf.accelerator import current_accelerator
 
 
 class KDTrainer(ABC):
@@ -125,8 +126,8 @@ class KDTrainer(ABC):
             self.model.train()
             self.teacher_model.eval()
             for prompts_id_len, inputs, attention_masks, _ in self.train_dataloader:
-                inputs = inputs.squeeze(1).to(torch.cuda.current_device())
-                attention_mask = attention_masks.squeeze(1).to(torch.cuda.current_device())
+                inputs = inputs.squeeze(1).to(current_accelerator.current_device())
+                attention_mask = attention_masks.squeeze(1).to(current_accelerator.current_device())
                 output = self.model(inputs, attention_mask=attention_mask, return_output=True)
 
                 # loss function
@@ -217,8 +218,8 @@ class KDTrainer(ABC):
             )
 
             for prompts_id_len, inputs, attention_masks, _ in eval_dataloader:
-                inputs = inputs.squeeze(1).to(torch.cuda.current_device())
-                attention_mask = attention_masks.squeeze(1).to(torch.cuda.current_device())
+                inputs = inputs.squeeze(1).to(current_accelerator.current_device())
+                attention_mask = attention_masks.squeeze(1).to(current_accelerator.current_device())
                 logits = self.model(inputs, attention_mask=attention_mask, return_output=True)["logits"]
 
                 labels = torch.where(

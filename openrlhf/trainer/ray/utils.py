@@ -1,5 +1,7 @@
 import os
 
+from openrlhf.accelerator import current_accelerator
+
 
 def ray_noset_visible_devices(env_vars=os.environ):
     # Refer to
@@ -25,6 +27,6 @@ def ray_noset_visible_devices(env_vars=os.environ):
 def get_physical_gpu_id():
     import torch
 
-    device = torch.cuda.current_device()
-    props = torch.cuda.get_device_properties(device)
+    device = current_accelerator.current_device()
+    props = current_accelerator.get_device_properties(device)
     return str(props.uuid)

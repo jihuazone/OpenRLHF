@@ -13,6 +13,7 @@ from openrlhf.models.actor import Actor
 from openrlhf.models.utils import compute_approx_kl, compute_reward, masked_mean, unpacking_samples
 from openrlhf.utils.logging_utils import init_logger
 from openrlhf.utils.remote_rm_utils import remote_rm_fn, remote_rm_fn_ray
+from openrlhf.accelerator import current_accelerator
 
 logger = init_logger(__name__)
 
@@ -212,8 +213,8 @@ class NaiveExperienceMaker(ABC):
 
         # calculate return and advantages
         for experience, reward in zip(experiences, rewards):
-            experience = experience.to_device("cuda")
-            reward = reward.to(device="cuda")
+            experience = experience.to_device(current_accelerator.current_device_name())
+            reward = reward.to(device=current_accelerator.current_device_name())
             num_actions = experience.info["num_actions"]
             reward = compute_reward(
                 reward,
@@ -247,7 +248,7 @@ class NaiveExperienceMaker(ABC):
                 return_sums = reward.sum(dim=-1)
             else:
                 return_sums = torch.tensor(
-                    [each_reward.sum() for each_reward in reward], device=torch.cuda.current_device()
+                    [each_reward.sum() for each_reward in reward], device=current_accelerator.current_device()
                 )
             experience.info["return"] = return_sums
             # remove unnecessary info
@@ -271,7 +272,7 @@ class NaiveExperienceMaker(ABC):
         for i in range(0, len(all_prompts), args.micro_rollout_batch_size):
             prompts = all_prompts[i : i + args.micro_rollout_batch_size]
             labels = all_labels[i : i + args.micro_rollout_batch_size]
-            inputs = self.tokenize_fn(prompts, self.prompt_max_len, device="cuda")
+            inputs = self.tokenize_fn(prompts, self.prompt_max_len, device=current_accelerator.current_device_name())
             sequences, attention_mask, action_mask = self.actor.generate(**inputs, **generate_kwargs)
             samples = Samples(
                 sequences=sequences,
@@ -385,7 +386,7 @@ class NaiveExperienceMaker(ABC):
         # reward shaping for rloo and reinforce_baseline
         if args.advantage_estimator == "rloo":
             rewards = torch.cat([experience.info["reward"] for experience in experiences])
-            rewards = rewards.reshape(-1, args.n_samples_per_prompt).to(device="cuda")
+            rewards = rewards.reshape(-1, args.n_samples_per_prompt).to(device=current_accelerator.current_device_name())
             baseline = (rewards.sum(-1, keepdim=True) - rewards) / (args.n_samples_per_prompt - 1)
             rewards = rewards - baseline
             rewards = rewards.flatten().to(device="cpu").chunk(len(experiences))
@@ -394,13 +395,13 @@ class NaiveExperienceMaker(ABC):
             # REINFORCE++-baseline removed the / std and K3 kl loss in GRPO.
             # `/ std` is not needed in RL variance reduction theory, and `k3 KL` has a larger variance than `k1 KL` under a categorical distribution.
             rewards = torch.cat([experience.info["reward"] for experience in experiences])
-            rewards = rewards.reshape(-1, args.n_samples_per_prompt).to(device="cuda")
+            rewards = rewards.reshape(-1, args.n_samples_per_prompt).to(device=current_accelerator.current_device_name())
             rewards = rewards - rewards.mean(-1, keepdim=True)
             rewards = rewards.reshape(-1).to(device="cpu").chunk(len(experiences))
             return experiences, rewards
         elif args.advantage_estimator == "group_norm":
             rewards = torch.cat([experience.info["reward"] for experience in experiences])
-            rewards = rewards.reshape(-1, args.n_samples_per_prompt).to(device="cuda")
+            rewards = rewards.reshape(-1, args.n_samples_per_prompt).to(device=current_accelerator.current_device_name())
             rewards = (rewards - rewards.mean(-1, keepdim=True)) / (rewards.std(-1, keepdim=True) + 1e-9)
             rewards = rewards.reshape(-1).to(device="cpu").chunk(len(experiences))
             return experiences, rewards
@@ -568,7 +569,7 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
         """
         args = self.strategy.args
         self.actor.eval()
-        device = torch.cuda.current_device()
+        device = current_accelerator.current_device()
 
         # extract values from samples
         sequences = samples.sequences
@@ -660,7 +661,7 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
             ray.get([self.reward_model[0].empty_cache.remote()])
 
         if args.colocate_actor_ref or args.colocate_all_models:
-            torch.cuda.empty_cache()
+            current_accelerator.empty_cache()
 
         if (self.initial_model is not None) and (not args.use_kl_loss):
             kl = compute_approx_kl(
@@ -803,9 +804,9 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
                 sequences, attention_mask, action_mask = self.actor.process_sequences(
                     sequences, max_input_len, eos_token_id, pad_token_id
                 )
-                sequences = sequences.to("cuda")
-                attention_mask = attention_mask.to("cuda")
-                action_mask = action_mask.to("cuda")
+                sequences = sequences.to(current_accelerator.current_device_name())
+                attention_mask = attention_mask.to(current_accelerator.current_device_name())
+                action_mask = action_mask.to(current_accelerator.current_device_name())
                 samples_list.append(
                     Samples(
                         sequences=sequences,
@@ -840,11 +841,11 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
                     # num_actions.append(max(1, sum(current_action_mask)))
                     num_actions.append(max(1, output_len))
 
-                sequences = torch.tensor(sequences, device="cuda").unsqueeze(0)
-                attention_mask = torch.tensor(attention_mask, device="cuda").unsqueeze(0)
+                sequences = torch.tensor(sequences, device=current_accelerator.current_device_name()).unsqueeze(0)
+                attention_mask = torch.tensor(attention_mask, device=current_accelerator.current_device_name()).unsqueeze(0)
                 action_mask = None
-                response_length = torch.tensor(num_actions, device="cuda", dtype=torch.float)
-                total_length = torch.tensor(packed_seq_lens, device="cuda", dtype=torch.float)
+                response_length = torch.tensor(num_actions, device=current_accelerator.current_device_name(), dtype=torch.float)
+                total_length = torch.tensor(packed_seq_lens, device=current_accelerator.current_device_name(), dtype=torch.float)
                 samples_list.append(
                     Samples(
                         sequences=sequences,

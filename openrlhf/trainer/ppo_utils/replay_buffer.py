@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 
 
+from openrlhf.accelerator import current_accelerator
 from .experience_maker import Experience
 
 
@@ -174,7 +175,7 @@ class NaiveReplayBuffer(ABC):
         self.limit = limit
         self.cpu_offload = cpu_offload
         self.packing_samples = packing_samples
-        self.target_device = torch.device(f"cuda:{torch.cuda.current_device()}")
+        self.target_device = torch.device(current_accelerator.current_device_name())
         self.items: List[BufferItem] = []
 
     @torch.no_grad()

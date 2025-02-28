@@ -17,6 +17,7 @@ from openrlhf.trainer.ppo_utils import Experience, RemoteExperienceMaker
 from openrlhf.utils import blending_datasets, get_tokenizer
 from openrlhf.utils.deepspeed import DeepspeedStrategy
 from openrlhf.utils.distributed_util import init_process_group
+from openrlhf.accelerator import current_accelerator
 
 from .launcher import BasePPORole
 from .utils import get_physical_gpu_id
@@ -138,14 +139,14 @@ class ActorPPOTrainer(PPOTrainer):
         # 3. actor model training
         if global_steps > self.freezing_actor_steps:
             status.update(super().ppo_train(global_steps))
-            torch.cuda.empty_cache()
+            current_accelerator.empty_cache()
 
             # 4. broadcast weights to vllm engines
             if self.vllm_engines is not None:
                 # vLLM wakeup
                 if self.strategy.args.vllm_enable_sleep:
                     torch.distributed.barrier()
-                    torch.cuda.synchronize()
+                    current_accelerator.synchronize()
                     if torch.distributed.get_rank() == 0:
                         refs = []
                         for engine in self.vllm_engines:
@@ -232,11 +233,11 @@ class ActorPPOTrainer(PPOTrainer):
                         ]
                         ray.get(refs)
                     torch.distributed.barrier()
-                    torch.cuda.synchronize()
+                    current_accelerator.synchronize()
 
         if cache_reset_refs:
             ray.get(cache_reset_refs)
-        torch.cuda.empty_cache()
+        current_accelerator.empty_cache()
         torch.distributed.barrier()
 
     def _save_checkpoint(self, args, tag, client_states):

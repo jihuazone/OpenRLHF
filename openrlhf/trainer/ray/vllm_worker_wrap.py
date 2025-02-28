@@ -3,6 +3,7 @@ from vllm.worker.worker import Worker
 
 from openrlhf.utils.distributed_util import init_process_group
 from openrlhf.utils.logging_utils import init_logger
+from openrlhf.accelerator import current_accelerator
 from .utils import get_physical_gpu_id
 
 logger = init_logger(__name__)
@@ -42,7 +43,7 @@ class WorkerWrap(Worker):
             print(f"update weight: {name}, dtype: {dtype}, shape: {shape}")
 
         assert dtype == self.model_config.dtype, f"mismatch dtype: src {dtype}, dst {self.model_config.dtype}"
-        weight = torch.empty(shape, dtype=dtype, device="cuda")
+        weight = torch.empty(shape, dtype=dtype, device=current_accelerator.current_device_name())
         if self._model_update_with_ray:
             import ray.util.collective as collective
 
@@ -72,4 +73,4 @@ class WorkerWrap(Worker):
         list_args[6] = device_id
         weight = func(*list_args)
         self.model_runner.model.load_weights(weights=[(name, weight)])
-        torch.cuda.synchronize()
+        current_accelerator.synchronize()

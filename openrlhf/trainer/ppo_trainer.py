@@ -12,6 +12,7 @@ from tqdm import tqdm
 from openrlhf.models import Actor, GPTLMLoss, PolicyLoss, ValueLoss
 from openrlhf.models.utils import masked_mean, unpacking_samples, compute_approx_kl
 from openrlhf.utils.distributed_sampler import DistributedSampler
+from openrlhf.accelerator import current_accelerator
 
 from .ppo_utils import AdaptiveKLController, Experience, FixedKLController, NaiveExperienceMaker, NaiveReplayBuffer
 
@@ -260,7 +261,7 @@ class PPOTrainer(ABC):
             self._tensorboard.close()
 
     def ppo_train(self, global_steps=0):
-        torch.cuda.empty_cache()
+        current_accelerator.empty_cache()
         # replay buffer may be empty at first, we should rebuild at each training
         dataloader = DataLoader(
             self.replay_buffer,
@@ -270,7 +271,7 @@ class PPOTrainer(ABC):
             pin_memory=self.dataloader_pin_memory,
             collate_fn=self.replay_buffer.collate_fn,
         )
-        device = torch.cuda.current_device()
+        device = current_accelerator.current_device()
 
         status_list = []
         status_mean = {}
@@ -322,7 +323,7 @@ class PPOTrainer(ABC):
                     status_mean[k] += v
             for k in status_mean.keys():
                 status_mean[k] /= len(status_list)
-        torch.cuda.empty_cache()
+        current_accelerator.empty_cache()
         return status_mean
 
     def training_step(self, experience: Experience, global_steps) -> Dict[str, float]:
@@ -411,8 +412,8 @@ class PPOTrainer(ABC):
         # ptx loss
         if self.pretrain_dataloader is not None:
             data = next(self.pretrain_dataloader)
-            inputs = data[1].squeeze(1).to(torch.cuda.current_device())
-            attention_mask = data[2].squeeze(1).to(torch.cuda.current_device())
+            inputs = data[1].squeeze(1).to(current_accelerator.current_device())
+            attention_mask = data[2].squeeze(1).to(current_accelerator.current_device())
             label = torch.where(
                 attention_mask.bool(),
                 inputs,

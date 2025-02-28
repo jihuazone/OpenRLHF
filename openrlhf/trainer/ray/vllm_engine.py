@@ -27,6 +27,7 @@ class LLMRayActor:
             # stop ray from manipulating CUDA_VISIBLE_DEVICES
             # at the top-level when the distributed_executor_backend is ray.
             os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+            os.envrion.pop("ASCEND_RT_VISIBLE_DEVICES", None)
         # every worker will use 0.2 GPU, so that we can schedule
         # 2 instances on the same GPUs.
         if bundle_indices is not None:

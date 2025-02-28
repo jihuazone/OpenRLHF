@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader
 from openrlhf.models import Actor
 from openrlhf.models.ring_attn_utils import get_ring_attn_group, set_ring_attn_group
 from openrlhf.utils.distributed_sampler import DistributedSampler
+from openrlhf.accelerator import current_accelerator
 
 from .deepspeed_utils import (
     _z3_params_to_fetch,
@@ -69,7 +70,7 @@ class DeepspeedStrategy(ABC):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+        current_accelerator.manual_seed_all(seed)
 
     def setup_distributed(self, timeout=timedelta(minutes=60)) -> None:
         self.set_seed(self.seed)
@@ -78,7 +79,7 @@ class DeepspeedStrategy(ABC):
             self.args.local_rank = int(os.environ["LOCAL_RANK"])
 
         if self.args.local_rank != -1:
-            torch.cuda.set_device(self.args.local_rank)
+            current_accelerator.set_device(self.args.local_rank)
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         deepspeed.init_distributed(timeout=timeout)
         self.setup_ring_attn()
@@ -377,7 +378,7 @@ class DeepspeedStrategy(ABC):
             is_cpu_tensor = data.device.type == "cpu"
 
             if is_cpu_tensor:
-                data = data.to(torch.cuda.current_device())
+                data = data.to(current_accelerator.current_device())
             if op == "mean":
                 data /= self.world_size
             dist.all_reduce(data, op=dist.ReduceOp.MAX if op == "max" else dist.ReduceOp.SUM)
@@ -396,8 +397,8 @@ class DeepspeedStrategy(ABC):
                 data = torch.Tensor([data])
             is_cpu_tensor = data.device.type == "cpu"
 
-            ret = [torch.zeros_like(data).to(torch.cuda.current_device()) for _ in range(self.world_size)]
-            dist.all_gather(ret, data.to(torch.cuda.current_device()))
+            ret = [torch.zeros_like(data).to(current_accelerator.current_device()) for _ in range(self.world_size)]
+            dist.all_gather(ret, data.to(current_accelerator.current_device()))
             return torch.cat(ret).cpu() if is_cpu_tensor else torch.cat(ret)
 
     def print(self, *msg):

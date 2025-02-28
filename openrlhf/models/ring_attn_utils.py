@@ -2,6 +2,8 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
+from openrlhf.accelerator import current_accelerator
+
 
 RING_ATTN_GROUP = None
 
@@ -26,7 +28,7 @@ def reset_ring_attn_position_ids(start, end, packed_seq_lens):
         end: the end position
         packed_seq_lens: the sequence lengths of packed sequences
     """
-    position_ids = torch.zeros((1, end - start), dtype=torch.long, device=torch.cuda.current_device())
+    position_ids = torch.zeros((1, end - start), dtype=torch.long, device=current_accelerator.current_device())
     offset = 0
     for seqlen in packed_seq_lens:
         seq_start = max(offset, start)
@@ -49,7 +51,7 @@ def update_ring_attn_params(packed_seq_lens, total_seq_len):
     """
     assert RING_ATTN_GROUP is not None
     cu_seqlens = torch.cumsum(
-        torch.tensor(packed_seq_lens, device=torch.cuda.current_device(), dtype=torch.int32),
+        torch.tensor(packed_seq_lens, device=current_accelerator.current_device(), dtype=torch.int32),
         dim=-1,
         dtype=torch.int32,
     )

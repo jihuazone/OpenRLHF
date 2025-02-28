@@ -11,6 +11,7 @@ from openrlhf.datasets import PromptDataset, SFTDataset
 from openrlhf.models import Actor, get_llm_for_sequence_regression
 from openrlhf.trainer import PPOTrainer
 from openrlhf.utils import blending_datasets, get_strategy, get_tokenizer
+from openrlhf.accelerator import current_accelerator
 
 
 def train(args):
@@ -33,7 +34,7 @@ def train(args):
     )
 
     if args.actor_init_on_gpu:
-        actor = actor.to(torch.cuda.current_device())
+        actor = actor.to(current_accelerator.current_device())
 
     if args.critic_pretrain:
         critic = get_llm_for_sequence_regression(
