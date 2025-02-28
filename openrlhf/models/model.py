@@ -10,6 +10,7 @@ from transformers.integrations.deepspeed import HfDeepSpeedConfig
 
 from openrlhf.utils.logging_utils import init_logger
 from openrlhf.utils.distributed_util import all_gather
+from openrlhf.accelerator import current_accelerator
 
 from .ring_attn_utils import convert_ring_attn_params
 from .utils import reset_position_ids
@@ -68,7 +69,10 @@ def get_llm_for_sequence_regression(
 
     config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
     config.normalize_reward = normalize_reward
-    config._attn_implementation = "flash_attention_2" if use_flash_attention_2 else "eager"
+    if current_accelerator.is_npu():
+        config._attn_implementation = "spda" if use_flash_attention_2 else "eager"
+    else:
+        config._attn_implementation = "flash_attention_2" if use_flash_attention_2 else "eager"
 
     # Prioritize using the value_head_prefix in the model configuration.
     value_head_prefix = getattr(config, "value_head_prefix", value_head_prefix)
