@@ -6,6 +6,18 @@ from datetime import datetime
 from setuptools import find_packages, setup
 from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
+torch_available = True
+try:
+    import torch
+except ImportError:
+    torch_available = False
+torch_npu_available = True
+try:
+    import torch_npu
+except ImportError:
+    torch_npu_available = False
+
+
 _build_mode = os.getenv("OPENRLHF_BUILD_MODE", "")
 
 
@@ -55,6 +67,12 @@ class bdist_wheel(_bdist_wheel):
             platform_tag = platform.system().lower()
 
         return python_version, abi_tag, platform_tag
+    
+
+if torch_available and torch.cuda.is_available():
+    requirements_file = "requirements.txt"
+elif torch_npu_available and torch.npu.is_available():
+    requirements_file = "requirements-npu.txt"
 
 
 # Setup configuration
@@ -72,7 +90,7 @@ setup(
     description="A Ray-based High-performance RLHF framework.",
     long_description=_fetch_readme(),
     long_description_content_type="text/markdown",
-    install_requires=_fetch_requirements("requirements.txt"),
+    install_requires=_fetch_requirements(requirements_file),
     extras_require={
         "vllm": ["vllm==0.7.2"],
         "vllm_latest": ["vllm>0.7.2"],
